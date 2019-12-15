@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include "misc_functions.h"
 
 #define BOARD_WIDTH  10
 #define BOARD_HEIGHT 10
@@ -13,8 +14,8 @@
 #define N_AMMO 10
 
 enum BattleShips {S1 = 1, S2 = 2, S3 = 3, S4 = 4};
-enum TileState {Destroyed = 'X', Empty = ' ', Occupied = 'S', CleanHit = 'O'};
-//enum GameState { };
+enum TileState {Missed = 'X', Empty = ' ', Occupied = 'S', CleanHit = 'O'};
+
 
 typedef struct Cordinates{
     int x;
@@ -24,7 +25,8 @@ typedef struct Cordinates{
 typedef struct Player{
     int totalHp;
     int** ships;
-    int tiles[BOARD_WIDTH][BOARD_HEIGHT];
+    int ourTiles[BOARD_WIDTH][BOARD_HEIGHT];
+    int enemyTiles[BOARD_WIDTH][BOARD_HEIGHT];
 }Player;
 
 typedef struct Game{
@@ -32,13 +34,59 @@ typedef struct Game{
     Player* player2;
 }Game;
 
-void printBoard(Game* game){
+void printBoards(Game* game, int playerNum){
+    Player* player;
+    if(playerNum == 1) player = game->player1;
+    else if(playerNum == 2) player = game->player2;
+    else return;
+
+    // Print player info
+    printfColored(GREEN, "\n\nPlayer ");
+    printfColored(ORANGE, "%d\n", playerNum);
+    printfColored(WHITE, "HP: ");
+    printfColored(GREEN, "%d\n", player->totalHp);
+    printfColored(WHITE, "Ammo: ");
+    printfColored(ORANGE, "%d\n\n", N_AMMO);
+    ////////////////////////////////////////
+
+    printfColored(BG_CYAN,"This is your board:\n");
+
+    // Print player board
+    printf(" ");
+    for(int j = 0; j < BOARD_HEIGHT; j++)
+        printfColored(ORANGE, "   %d   ", j);
+    printf("\n");
     for(int i = 0; i < BOARD_WIDTH; i++){
+        printfColored(ORANGE, "%d", i);
         for(int j = 0; j < BOARD_HEIGHT; j++){
-             printf(" [%c] ", game->player1->tiles[i][j]);
+            printfColored(WHITE, " [ ");
+            player->ourTiles[i][j] == Occupied ? MAGENTA : WHITE;
+            putchar(player->ourTiles[i][j]);
+            printfColored(WHITE, " ] ");
         }
         printf("\n");
     }
+    printf("\n\n");
+
+    // Print ENEMY player board
+    printfColored(BG_RED, "Enemy Territory:\n");
+    printf(" ");
+    for(int j = 0; j < BOARD_HEIGHT; j++)
+        printfColored(ORANGE, "   %d   ", j);
+    printf("\n");
+    for(int i = 0; i < BOARD_WIDTH; i++){
+        printfColored(ORANGE, "%d", i);
+        for(int j = 0; j < BOARD_HEIGHT; j++){
+            printfColored(WHITE, " [ ");
+
+            if (player->enemyTiles[i][j] == CleanHit) GREEN;
+            else if (player->enemyTiles[i][j] == Missed) RED;
+            putchar(player->enemyTiles[i][j]);
+            printfColored(WHITE, " ] ");
+        }
+        printf("\n");
+    }
+
 }
 #define ARR_LENGTH(x)  (sizeof(x) / sizeof((x)[0]))
 //player->shipsLength[0] = Aircraft;
@@ -53,21 +101,14 @@ void initShips(Player* player){
     for(int i = SHIPS - 1; i >= 0; i--){
         shipSize[i] = i < 3 ? i + 1 : i;
         if(i == 0) shipSize[i] = 5;
-
-        printf("shipSize: %d\n", shipSize[i]);
+        //printf("shipSize: %d\n", shipSize[i]);
         player->ships[i] = (int*) malloc(shipSize[i] * sizeof(int));
     }
 
-
-    int rNum = 0;
     for(int i = 0; i < SHIPS; i++){
-        int limit = shipSize[i] + rNum;
-        //printf("len: %d rNum: %d limit: %d ", limit - rNum, rNum, limit);
         for(int k = 0; k < shipSize[i]; k++){
-            player->tiles[i+rNum][k+rNum] = Occupied;
+                player->ourTiles[i][k] = Occupied;
         }
-        //printf("ship: %d\n", i);
-        rNum += 1;
     }
 }
 
@@ -82,26 +123,36 @@ void initializeGame(Game* game){
     // Initialize players board
     for(int i = 0; i < BOARD_HEIGHT; i++){
         for(int j = 0; j < BOARD_WIDTH; j++){
-            game->player1->tiles[i][j] = Empty;
-            game->player2->tiles[i][j] = Empty;
+            game->player1->ourTiles[i][j]      = Empty;
+            game->player1->enemyTiles[i][j]    = Empty;
+            game->player2->ourTiles[i][j]      = Empty;
+            game->player2->enemyTiles[i][j]    = Empty;
         }
     }
 
     // Initialize players HP
     game->player1->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4;
-    printf("totalHP: %d\n", game->player1->totalHp);
 
     // Initialize players ships
     initShips(game->player1);
     initShips(game->player2);
+
+    printBoards(game, 1);
+    free(game->player1->ships);
+    free(game->player2->ships);
+    free(game->player1);
+    free(game->player2);
 }
 
 int gameLoop(){
-    printf("Game Started!\n");
-    Game* game = (Game*) malloc(sizeof(Game));
 
+    printfColored(PURPLE, "Game Started!\n");
+
+    Game* game = (Game*) malloc(sizeof(Game));
     initializeGame(game);
-    printBoard(game);
+
+
+    free(game);
 }
 
 
