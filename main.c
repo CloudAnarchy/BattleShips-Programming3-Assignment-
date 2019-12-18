@@ -6,6 +6,7 @@
 
 #define BOARD_WIDTH  10
 #define BOARD_HEIGHT 10
+#define N_UNIQUE_SHIPS 4
 #define N_S1 4
 #define N_S2 3
 #define N_S3 2
@@ -16,15 +17,10 @@
 enum BattleShips {S1 = 1, S2 = 2, S3 = 3, S4 = 4};
 enum TileState {Missed = 'X', Empty = ' ', Occupied = 'S', CleanHit = 'O'};
 
-
-typedef struct Cordinates{
-    int x;
-    int y;
-}Coordinates;
-
 typedef struct Player{
+    unsigned short playerNum;
     int totalHp;
-    int** ships;
+    int ships[SHIPS][N_S4];
     int ourTiles[BOARD_WIDTH][BOARD_HEIGHT];
     int enemyTiles[BOARD_WIDTH][BOARD_HEIGHT];
 }Player;
@@ -34,15 +30,12 @@ typedef struct Game{
     Player* player2;
 }Game;
 
-void printBoards(Game* game, int playerNum){
-    Player* player;
-    if(playerNum == 1) player = game->player1;
-    else if(playerNum == 2) player = game->player2;
-    else return;
+void printBoards(Player* player){
+
 
     // Print player info
     printfColored(GREEN, "\n\nPlayer ");
-    printfColored(ORANGE, "%d\n", playerNum);
+    printfColored(ORANGE, "%d\n", player->playerNum);
     printfColored(WHITE, "HP: ");
     printfColored(GREEN, "%d\n", player->totalHp);
     printfColored(WHITE, "Ammo: ");
@@ -89,25 +82,32 @@ void printBoards(Game* game, int playerNum){
 
 }
 #define ARR_LENGTH(x)  (sizeof(x) / sizeof((x)[0]))
-//player->shipsLength[0] = Aircraft;
-//player->shipsLength[1] = Battleship;
-//player->shipsLength[2] = Submarine;
-//player->shipsLength[3] = Cruiser;
-//player->shipsLength[4] = Destroyer;
-void initShips(Player* player){
-    player->ships = (int**) malloc(SHIPS * sizeof(int*));
-    int shipSize[SHIPS];
 
-    for(int i = SHIPS - 1; i >= 0; i--){
-        shipSize[i] = i < 3 ? i + 1 : i;
-        if(i == 0) shipSize[i] = 5;
-        //printf("shipSize: %d\n", shipSize[i]);
-        player->ships[i] = (int*) malloc(shipSize[i] * sizeof(int));
-    }
+void initShipsSize(int* shipSize, int nShips, int nSize){
+    static int shipCounter = 0;
+    static int functionCounter = 0;
+
+    // Basically every time there is a new player reset the shipCounter
+    if(functionCounter % N_UNIQUE_SHIPS == 0) shipCounter = 0;
+
+    int oldCounter = shipCounter;
+    for(; shipCounter < oldCounter + nShips; shipCounter++)
+        shipSize[shipCounter] = nSize;
+
+    functionCounter++;
+}
+
+void initShips(Player* player){
+    int* shipSize = (int*) malloc(SHIPS * sizeof(int));
+
+    initShipsSize(shipSize, N_S1, S1);
+    initShipsSize(shipSize, N_S2, S2);
+    initShipsSize(shipSize, N_S3, S3);
+    initShipsSize(shipSize, N_S4, S4);
 
     for(int i = 0; i < SHIPS; i++){
         for(int k = 0; k < shipSize[i]; k++){
-                player->ourTiles[i][k] = Occupied;
+            player->ourTiles[i][k] = Occupied;
         }
     }
 }
@@ -130,16 +130,18 @@ void initializeGame(Game* game){
         }
     }
 
-    // Initialize players HP
+    // Initialize players HP and their names
     game->player1->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4;
+    game->player1->playerNum = 1;
+    game->player2->playerNum = 2;
 
     // Initialize players ships
     initShips(game->player1);
     initShips(game->player2);
 
-    printBoards(game, 1);
-    free(game->player1->ships);
-    free(game->player2->ships);
+
+
+
     free(game->player1);
     free(game->player2);
 }
@@ -151,13 +153,24 @@ int gameLoop(){
     Game* game = (Game*) malloc(sizeof(Game));
     initializeGame(game);
 
+    printBoards(game->player1);
 
     free(game);
 }
 
 
 int main() {
-
+//    int i, j = 0;
+//    for(i = 0;i < 10; i++){
+//    }
+//    printf("first: %d\n", i);
+//    j = i;
+//
+//    for(;i < j + 3; i++){
+//        printf("second: %d\n", i);
+//    }
+//    j = i;
+//    printf("last: %d\n", i);
     gameLoop();
     return 0;
 }
