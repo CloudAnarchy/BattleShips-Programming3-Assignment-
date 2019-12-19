@@ -42,6 +42,18 @@ int printfColored(int color, char* str, ...){
     return done;
 }
 
+int inputInt(int lowerBound, int higherBound){
+    int input, count = 0;
+
+    do{
+        if(count > 0) printfColored(RED, "Invalid input!\n");
+        else count++;
+        scanf("%d", &input);
+    }while(input < lowerBound || input > higherBound);
+
+    return input;
+}
+
 void getSubString(char *target, const char *source, int from, int to){
     int i, j = 0;
     for(i = from, j = 0; i <= to; i++, j++){
