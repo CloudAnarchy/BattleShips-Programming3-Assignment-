@@ -7,7 +7,7 @@
 #define BOARD_WIDTH  10
 #define BOARD_HEIGHT 10
 #define N_UNIQUE_SHIPS 4
-#define N_S1 4
+#define N_S1 2
 #define N_S2 3
 #define N_S3 2
 #define N_S4 1
@@ -147,7 +147,6 @@ void initShips(Player* player){
 //    for(int i = 0; i < SHIPS; i++)
 //        newShipSize[i] = shipSize[i];
 
-
     // Auto placements
 //    for(int i = 0; i < SHIPS; i++){
 //        for(int k = 0; k < shipSize[i]; k++){
@@ -201,11 +200,11 @@ void initializeGame(Game* game){
 
     // Initialize players HP and their names and ammos
     // Player 1
-    game->player1->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4;
+    game->player1->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
     game->player1->playerNum = 1;
     game->player1->ammo = N_AMMO;
     // Player 2
-    game->player2->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4;
+    game->player2->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
     game->player2->playerNum = 2;
     game->player2->ammo = N_AMMO;
 
@@ -241,6 +240,42 @@ void playerMove(Player* player, Player* enemyPlayer){
     player->ammo--;
 }
 
+bool declareWinner(Game* game){
+    Player* player = NULL;
+
+    // Player 1 wins!
+    if(game->player2->totalHp == 0)
+        player = game->player1;
+    // Player 2 wins!
+    if(game->player1->totalHp == 0)
+        player = game->player2;
+
+
+    if(player == NULL) return false;
+    // If we get to this point it means either player1 is "dead" or player2
+    printfColored(WHITE, "          ___\n"
+           "        ,\"---\".\n"
+           "        :     ;\n"
+           "         `-.-'\n"
+           "          | |\n"
+           "          | |\n"
+           "          | |\n"
+           "       _.-\\_/-._\n"
+           "    _ / |     | \\ _\n"
+           "   / /   `---'   \\ \\\n"
+           "  /  `-----------'  \\\n"
+           " /,-\"\"-.       ,-\"\"-.\\\n"
+           "( i-..-i       i-..-i )\n"
+           "|`|    |-------|    |'|\n"
+           "\\ `-..-'  ,=.  `-..-'/\n"
+           " `--------|=|-------'\n"
+           "          | |\n"
+           "          \\ \\\n"
+           "           ) )\n"
+           );
+    printfColored(GREEN, "Player%d WON!!\n\n", player->playerNum);
+}
+
 int gameLoop(){
 
     printfColored(PURPLE, "Game Started!\n");
@@ -252,11 +287,16 @@ int gameLoop(){
     int roundsCounter = 1;
     while(bothPlayersAmmo > 0){
 
-        if(roundsCounter % 2 == 0){
-            playerMove(game->player2, game->player1);
-        }else{
+        // Every round the next playerMoves.
+        if(roundsCounter % 2 != 0 && game->player1->ammo > 0){
             playerMove(game->player1, game->player2);
+        }else if (roundsCounter % 2 == 0 && game->player2->ammo > 0){
+            playerMove(game->player2, game->player1);
         }
+
+        // Check if there is a winner
+        if(declareWinner(game))
+            break;
 
         bothPlayersAmmo--;
         roundsCounter++;
