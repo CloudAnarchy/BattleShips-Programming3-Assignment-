@@ -2,34 +2,12 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 #include "misc_functions.h"
-
-#define BOARD_WIDTH  10
-#define BOARD_HEIGHT 10
-#define N_UNIQUE_SHIPS 4
-#define N_S1 2
-#define N_S2 3
-#define N_S3 2
-#define N_S4 1
-#define SHIPS N_S1 //+ N_S2 + N_S3 + N_S4
-#define N_AMMO 10
-
-enum BattleShips {S1 = 1, S2 = 2, S3 = 3, S4 = 4};
-enum TileState {Destroyed = 'X', Missed = 'X', Empty = ' ', Occupied = 'S', CleanHit = 'O'};
-
-typedef struct Player{
-    unsigned short playerNum;
-    int totalHp;
-    unsigned short ammo;
-    //int ships[SHIPS][N_S4];
-    int ourTiles[BOARD_WIDTH][BOARD_HEIGHT];
-    int enemyTerritory[BOARD_WIDTH][BOARD_HEIGHT];
-}Player;
-
-typedef struct Game{
-    Player* player1;
-    Player* player2;
-}Game;
+#include "structsEnumsDefines.h"
 
 void printBoards(Player* player){
 
@@ -84,27 +62,7 @@ void printBoards(Player* player){
     }
     printf("\n\n");
 
-    // Print ENEMY player board
-//    printfColored(BG_RED, "Enemy Territory:\n");
-//    printf(" ");
-//    for(int j = 0; j < BOARD_HEIGHT; j++)
-//        printfColored(ORANGE, "   %d   ", j);
-//    printf("\n");
-//    for(int i = 0; i < BOARD_WIDTH; i++){
-//        printfColored(ORANGE, "%d", i);
-//        for(int j = 0; j < BOARD_HEIGHT; j++){
-//            printfColored(WHITE, " [ ");
-//
-//            if (player->enemyTerritory[i][j] == CleanHit) GREEN;
-//            else if (player->enemyTerritory[i][j] == Missed) RED;
-//            putchar(player->enemyTerritory[i][j]);
-//            printfColored(WHITE, " ] ");
-//        }
-//        printf("\n");
-//    }
-
 }
-#define ARR_LENGTH(x)  (sizeof(x) / sizeof((x)[0]))
 
 void initShipsSize(int* shipSize, int nShips, int nSize){
     static int shipCounter = 0;
@@ -119,7 +77,6 @@ void initShipsSize(int* shipSize, int nShips, int nSize){
 
     functionCounter++;
 }
-
 int* askForCoordinates(int* coords){
 
     // Ask the player to give coordinates.
@@ -132,9 +89,6 @@ int* askForCoordinates(int* coords){
     printf("\n");
     return coords;
 }
-
-
-
 void initShips(Player* player){
     int* shipSize = (int*) malloc(SHIPS * sizeof(int));
 
@@ -179,7 +133,6 @@ void initShips(Player* player){
     // Produce sigFault
     //free(shipSize);
 }
-
 void initializeGame(Game* game){
     game->player1 = (Player*) malloc(sizeof(Player));
     game->player2 = (Player*) malloc(sizeof(Player));
@@ -198,6 +151,11 @@ void initializeGame(Game* game){
         }
     }
 
+    game->player1->ourTiles[3][0]    = Occupied;
+    game->player1->ourTiles[3][1]    = Occupied;
+    game->player1->ourTiles[3][2]    = Occupied;
+    game->player1->ourTiles[3][3]    = Occupied;
+
     // Initialize players HP and their names and ammos
     // Player 1
     game->player1->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
@@ -210,11 +168,10 @@ void initializeGame(Game* game){
 
 
     // Initialize players ships
-    initShips(game->player1);
-    initShips(game->player2);
+    //initShips(game->player1);
+    // initShips(game->player2);
 
 }
-
 void playerMove(Player* player, Player* enemyPlayer){
     printBoards(player);
     printfColored(MAGENTA, "Make a move");
@@ -239,7 +196,6 @@ void playerMove(Player* player, Player* enemyPlayer){
     player->enemyTerritory[coords[0]][coords[1]] = hitSymbol;
     player->ammo--;
 }
-
 bool declareWinner(Game* game){
     Player* player = NULL;
 
@@ -274,9 +230,9 @@ bool declareWinner(Game* game){
            "           ) )\n"
            );
     printfColored(GREEN, "Player%d WON!!\n\n", player->playerNum);
+    return true;
 }
-
-int gameLoop(){
+void gameLoop(){
 
     printfColored(PURPLE, "Game Started!\n");
 
@@ -306,7 +262,164 @@ int gameLoop(){
     free(game->player2);
     free(game);
 }
+int toString(char* str, int num){
+    int i, rem, len = 0, n;
 
+    n = num;
+    while(n != 0){
+        len++;
+        n /= 10;
+    }
+
+    for(i = 0; i < len; i++){
+        rem = num % 10;
+        num = num / 10;
+        str[len - (i + 1)] = rem + '0';
+    }
+    return len;
+}
+void prepareMsg(char* str, Player* player){
+    int n = 0;
+//    toString(str, player->playerNum);
+//    str[n++] = player->playerNum;
+//    str[n++] = player->ammo;
+//    str[n++] = player->totalHp;
+
+    for(int i = 0; i < BOARD_HEIGHT; i++) {
+        for (int j = 0; j < BOARD_WIDTH; j++) {
+            str[n++] = player->ourTiles[i][j];
+        }
+    }
+    //str[n++] = '\n';
+
+    for(int i = 0; i < BOARD_HEIGHT; i++) {
+        for (int j = 0; j < BOARD_WIDTH; j++) {
+            str[n++] = player->enemyTerritory[i][j];
+        }
+    }
+    str[n] = '\0';
+}
+
+void* playerHandler(void* data){
+
+    // Get the socket descriptor
+    ConnectInfo* connectInfo = (ConnectInfo*) data;
+    int sock = *(int*)connectInfo->clientSock;
+    //initShips(game->player1);
+    char rev_msg[256];
+    char* sent_msg = (char*) malloc(2000 * sizeof(char));
+
+    do{
+        printfColored(MAGENTA, "Waiting msg..\n");
+        if(recv(sock , rev_msg , 256 , 0) < 0){
+            perror("Recv failed!");
+            exit(-5);
+        }
+        printfColored(ORANGE, "msg: ");
+        printfColored(CYAN, "%s\n",rev_msg);
+        fflush(stdin);
+
+        prepareMsg(sent_msg, connectInfo->player);
+        send(sock, sent_msg, 2000, 0);
+    }while(strcmp(rev_msg, "quit") != 0);
+
+    close(sock);
+    pthread_exit(NULL);
+}
+
+void* serverConnection(void* game){
+    int sock, client_sock, sizeOfStruct;
+    struct sockaddr_in server , client;
+
+    // Prepare the sockaddr_in structure
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT);
+    server.sin_addr.s_addr = htonl(INADDR_ANY);
+
+
+    //Create socket
+    sock = socket(AF_INET , SOCK_STREAM , 0);
+
+    if (sock == -1){
+        printf("Could not create socket");
+        exit(-5);
+    }
+    puts("Socket created");
+
+    // Bind
+    if(bind(sock, (struct sockaddr *)&server, sizeof(server)) < 0){
+        perror("bind failed. Error");
+        exit(1);
+    }
+    printfColored(GREEN, "Bind done\n");
+
+    // Listen to that socket.Changed to 8 to increase the maximum pending.
+    listen(sock , 100);
+
+    //Accept and incoming connection
+    printfColored(ORANGE, "Waiting for incoming connections...\n");
+    sizeOfStruct = sizeof(struct sockaddr_in);
+
+    int count = 0;
+    while((client_sock = accept(sock, (struct sockaddr *)&client, (socklen_t*)&sizeOfStruct)) || count < 2){
+
+        // New connection-customer
+        pthread_t playerThread;
+        ConnectInfo* connectInfo = (ConnectInfo*) malloc(sizeof(ConnectInfo));
+        connectInfo->clientSock  = malloc(1);
+        *connectInfo->clientSock = client_sock;
+
+
+        if(count == 0){
+            connectInfo->player = ((Game*) game)->player1;
+        }else{
+            connectInfo->player = ((Game*) game)->player2;
+        }
+
+
+        if(pthread_create(&playerThread , NULL, playerHandler, (void*) connectInfo) < 0){
+            perror("could not create thread");
+            exit(-4);
+        }
+
+
+        int players = 2;
+        // We don't want to join the thread if we do its going to be linear.
+        // If you made connection with the last customer wait him!!
+        if(client_sock == players + 4){
+            pthread_join(playerThread, NULL);
+        }else{
+            pthread_detach(playerThread);
+        }
+        count++;
+    }
+
+    if(client_sock < 0){
+        perror("accept failed");
+        exit(1);
+    }
+
+    return NULL;
+}
+
+void gameConnected(){
+    pthread_t server;
+    //int args = 0;
+    Game* game = (Game*) malloc(sizeof(Game));
+    initializeGame(game);
+
+    if(pthread_create(&server, NULL, serverConnection, (void*) game) != 0){
+        printfColored(RED, "Failed to create a thread!\n");
+        exit(-4);
+    }
+
+    if(pthread_join(server, NULL) != 0){
+        printfColored(RED, "Failed to join a thread!\n");
+        exit(-4);
+    }
+    free(game->player1);
+    free(game);
+}
 
 int main() {
 //    int i, j = 0;
@@ -320,6 +433,7 @@ int main() {
 //    }
 //    j = i;
 //    printf("last: %d\n", i);
-    gameLoop();
+    gameConnected();
+    //gameLoop();
     return 0;
 }

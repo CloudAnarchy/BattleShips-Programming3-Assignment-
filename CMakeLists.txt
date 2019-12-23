@@ -3,4 +3,6 @@ project(Exercise3_prog3 C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(Exercise3_prog3 main.c)
+find_package (Threads)
+add_executable(Exercise3_prog3 main.c structsEnumsDefines.h)
+target_link_libraries(Exercise3_prog3 ${CMAKE_THREAD_LIBS_INIT})
