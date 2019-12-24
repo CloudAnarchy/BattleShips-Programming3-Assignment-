@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -18,7 +19,7 @@ void printBoards(Player* player){
     printfColored(WHITE, "HP: ");
     printfColored(GREEN, "%d\n", player->totalHp);
     printfColored(WHITE, "Ammo: ");
-    printfColored(ORANGE, "%d\n\n", N_AMMO);
+    printfColored(ORANGE, "%d\n\n", player->ammo);
     ////////////////////////////////////////
 
     printfColored(BG_CYAN,"This is your board:\t\t\t\t\t\t\t\t\t\t\t\t\t\t ");
@@ -80,10 +81,10 @@ void initShipsSize(int* shipSize, int nShips, int nSize){
 int* askForCoordinates(int* coords){
 
     // Ask the player to give coordinates.
-    printfColored(CYAN, "Give x coordinate: ");
+    printfColored(CYAN, "Getting x coordinate: ");
     coords[0] = inputInt(0, 9);
 
-    printfColored(CYAN, "Give y coordinate: ");
+    printfColored(CYAN, "Getting y coordinate: ");
     coords[1] = inputInt(0, 9);
 
     printf("\n");
@@ -97,42 +98,11 @@ void initShips(Player* player){
     initShipsSize(shipSize, N_S3, S3);
     initShipsSize(shipSize, N_S4, S4);
 
-//    int newShipSize[SHIPS];
-//    for(int i = 0; i < SHIPS; i++)
-//        newShipSize[i] = shipSize[i];
-
-    // Auto placements
-//    for(int i = 0; i < SHIPS; i++){
-//        for(int k = 0; k < shipSize[i]; k++){
-//            player->ourTiles[i][k] = Occupied;
-//        }
-//    }
-
-    printfColored(BG_PURPLE, "Player%d\n", player->playerNum);
-    int* tmpCoords;
-    int* coords = (int*) malloc(2 * sizeof(int));
-
     for(int i = 0; i < SHIPS; i++){
-        for(int k = 0; k < shipSize[i]; k++){
-            if(k == 0){
-                printf("Ship[%d]", i);
-                printf(" of size ");
-                printfColored(ORANGE, "%d\n", shipSize[i]);
-            }
-            int count = 0;
-            do{
-                if(count > 0) printfColored(RED, "Enter a coordinate that isn't set already!\n");
-
-                tmpCoords = askForCoordinates(coords);
-                count++;
-            }while(player->ourTiles[tmpCoords[0]][tmpCoords[1]] == Occupied);
-            player->ourTiles[tmpCoords[0]][tmpCoords[1]] = Occupied;
-        }
+        player->shipsSize[i] = shipSize[i];
     }
-
-    // Produce sigFault
-    //free(shipSize);
 }
+
 void initializeGame(Game* game){
     game->player1 = (Player*) malloc(sizeof(Player));
     game->player2 = (Player*) malloc(sizeof(Player));
@@ -151,10 +121,10 @@ void initializeGame(Game* game){
         }
     }
 
-    game->player1->ourTiles[3][0]    = Occupied;
-    game->player1->ourTiles[3][1]    = Occupied;
-    game->player1->ourTiles[3][2]    = Occupied;
-    game->player1->ourTiles[3][3]    = Occupied;
+//    game->player1->ourTiles[3][0]    = Occupied;
+//    game->player1->ourTiles[3][1]    = Occupied;
+//    game->player1->ourTiles[3][2]    = Occupied;
+//    game->player1->ourTiles[3][3]    = Occupied;
 
     // Initialize players HP and their names and ammos
     // Player 1
@@ -166,72 +136,53 @@ void initializeGame(Game* game){
     game->player2->playerNum = 2;
     game->player2->ammo = N_AMMO;
 
-
-    // Initialize players ships
-    //initShips(game->player1);
-    // initShips(game->player2);
-
+    // Initialize players ships size
+    initShips(game->player1);
+    initShips(game->player2);
 }
-void playerMove(Player* player, Player* enemyPlayer){
-    printBoards(player);
-    printfColored(MAGENTA, "Make a move");
-    printf(" Player");
+void sendStateToClient(ConnectInfo* connectInfo, int sock){
+    // Player 1 wins!
+    if(connectInfo->enemyPlayer->totalHp == 0){
+        send(sock, "You won!", 100, 0);
+    }
+    // Player 2 wins!
+    else if(connectInfo->player->totalHp == 0){
+        send(sock, "You lost!", 100, 0);
+    }
+    // Keep playing
+    else{
+        send(sock, "Keep Playing", 100, 0);
+    }
+}
 
-    printfColored(GREEN, "%d", player->playerNum);
-    printfColored(MAGENTA, " !\n");
+void playerMove(ConnectInfo* connectInfo, int sock){
+    Player* player = connectInfo->player;
+    Player* enemyPlayer = connectInfo->enemyPlayer;
+
+    sendStateToClient(connectInfo, sock);
     // He will send this info with tcp/ip protocol to the server
     int* coords = (int*) malloc(2 * sizeof(int));
-    askForCoordinates(coords);
+    if(recv(sock, coords, 2 * sizeof(int), 0) < 0){
+        perror("Recv failed!\n");
+        exit(-5);
+    }
+    if(player->playerNum == 1) printfColored(BG_PURPLE, "Player%d\n", player->playerNum);
+    else  printfColored(BG_LADI, "Player%d\n", player->playerNum);
+    printf("Made a move:\n");
+    printCoords(coords);
 
-    // but for the demo now..:
-    int hitSymbol = 'X';
-
+    int hitSymbol = Destroyed;
     // If there is a Submarine in that tile update the enemy
     // board his hp and our board.
     if(enemyPlayer->ourTiles[coords[0]][coords[1]] == Occupied){
         enemyPlayer->totalHp--;
-        enemyPlayer->ourTiles[coords[0]][coords[1]] = 'X';
-        hitSymbol = 'O';
+        enemyPlayer->ourTiles[coords[0]][coords[1]] = Destroyed;
+        hitSymbol = CleanHit;
     }
     player->enemyTerritory[coords[0]][coords[1]] = hitSymbol;
     player->ammo--;
 }
-bool declareWinner(Game* game){
-    Player* player = NULL;
 
-    // Player 1 wins!
-    if(game->player2->totalHp == 0)
-        player = game->player1;
-    // Player 2 wins!
-    if(game->player1->totalHp == 0)
-        player = game->player2;
-
-
-    if(player == NULL) return false;
-    // If we get to this point it means either player1 is "dead" or player2
-    printfColored(WHITE, "          ___\n"
-           "        ,\"---\".\n"
-           "        :     ;\n"
-           "         `-.-'\n"
-           "          | |\n"
-           "          | |\n"
-           "          | |\n"
-           "       _.-\\_/-._\n"
-           "    _ / |     | \\ _\n"
-           "   / /   `---'   \\ \\\n"
-           "  /  `-----------'  \\\n"
-           " /,-\"\"-.       ,-\"\"-.\\\n"
-           "( i-..-i       i-..-i )\n"
-           "|`|    |-------|    |'|\n"
-           "\\ `-..-'  ,=.  `-..-'/\n"
-           " `--------|=|-------'\n"
-           "          | |\n"
-           "          \\ \\\n"
-           "           ) )\n"
-           );
-    printfColored(GREEN, "Player%d WON!!\n\n", player->playerNum);
-    return true;
-}
 void gameLoop(){
 
     printfColored(PURPLE, "Game Started!\n");
@@ -251,8 +202,8 @@ void gameLoop(){
         }
 
         // Check if there is a winner
-        if(declareWinner(game))
-            break;
+        //if(declareWinner(game))
+        //    break;
 
         bothPlayersAmmo--;
         roundsCounter++;
@@ -262,35 +213,14 @@ void gameLoop(){
     free(game->player2);
     free(game);
 }
-int toString(char* str, int num){
-    int i, rem, len = 0, n;
-
-    n = num;
-    while(n != 0){
-        len++;
-        n /= 10;
-    }
-
-    for(i = 0; i < len; i++){
-        rem = num % 10;
-        num = num / 10;
-        str[len - (i + 1)] = rem + '0';
-    }
-    return len;
-}
 void prepareMsg(char* str, Player* player){
-    int n = 0;
-//    toString(str, player->playerNum);
-//    str[n++] = player->playerNum;
-//    str[n++] = player->ammo;
-//    str[n++] = player->totalHp;
 
+    int n = strlen(str);
     for(int i = 0; i < BOARD_HEIGHT; i++) {
         for (int j = 0; j < BOARD_WIDTH; j++) {
             str[n++] = player->ourTiles[i][j];
         }
     }
-    //str[n++] = '\n';
 
     for(int i = 0; i < BOARD_HEIGHT; i++) {
         for (int j = 0; j < BOARD_WIDTH; j++) {
@@ -299,29 +229,49 @@ void prepareMsg(char* str, Player* player){
     }
     str[n] = '\0';
 }
+void addShips(Player* player, int sock){
+    // Auto placements
+//    for(int i = 0; i < SHIPS; i++){
+//        for(int k = 0; k < shipSize[i]; k++){
+//            player->ourTiles[i][k] = Occupied;
+//        }
+//    }
+    int* tmpCoords = (int*) malloc(2 * sizeof(int));
+    for(int i = 0; i < SHIPS; i++){
+        for(int k = 0; k < player->shipsSize[i]; k++){
+            if(recv(sock, (int*) tmpCoords, 2 * sizeof(int), 0) < 0){
+                perror("Recv failed!\n");
+                exit(-5);
+            }
+            printCoords(tmpCoords);
+            player->ourTiles[tmpCoords[0]][tmpCoords[1]] = Occupied;
+        }
+    }
+    printfColored(BG_PURPLE, "Player%d\n", player->playerNum);
+    printfColored(CYAN, "Added all his ships!\n");
+}
 
 void* playerHandler(void* data){
 
     // Get the socket descriptor
     ConnectInfo* connectInfo = (ConnectInfo*) data;
     int sock = *(int*)connectInfo->clientSock;
-    //initShips(game->player1);
-    char rev_msg[256];
-    char* sent_msg = (char*) malloc(2000 * sizeof(char));
 
-    do{
-        printfColored(MAGENTA, "Waiting msg..\n");
-        if(recv(sock , rev_msg , 256 , 0) < 0){
-            perror("Recv failed!");
-            exit(-5);
+    int playerTurns = connectInfo->player->ammo;
+
+    while(playerTurns > 0
+    && connectInfo->player->totalHp > 0
+    && connectInfo->enemyPlayer->totalHp > 0){
+
+        // First send is the initialized player
+        send(sock, connectInfo->player, sizeof(Player), 0);
+        if(playerTurns == connectInfo->player->ammo){
+            addShips(connectInfo->player, sock);
+        }else{
+            playerMove(connectInfo, sock);
         }
-        printfColored(ORANGE, "msg: ");
-        printfColored(CYAN, "%s\n",rev_msg);
-        fflush(stdin);
-
-        prepareMsg(sent_msg, connectInfo->player);
-        send(sock, sent_msg, 2000, 0);
-    }while(strcmp(rev_msg, "quit") != 0);
+        playerTurns--;
+    }
 
     close(sock);
     pthread_exit(NULL);
@@ -371,9 +321,11 @@ void* serverConnection(void* game){
 
 
         if(count == 0){
-            connectInfo->player = ((Game*) game)->player1;
+            connectInfo->player      = ((Game*) game)->player1;
+            connectInfo->enemyPlayer = ((Game*) game)->player2;
         }else{
-            connectInfo->player = ((Game*) game)->player2;
+            connectInfo->player      = ((Game*) game)->player2;
+            connectInfo->enemyPlayer = ((Game*) game)->player1;
         }
 
 

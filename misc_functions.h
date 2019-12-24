@@ -41,7 +41,12 @@ int printfColored(int color, char* str, ...){
     RESET; // Reset the color.
     return done;
 }
-
+void printCoords(int* coords){
+    printfColored(ORANGE, "X: ");
+    printfColored(CYAN, "%d  ", coords[0]);
+    printfColored(ORANGE, " Y: ");
+    printfColored(CYAN, "%d\n", coords[1]);
+}
 int inputInt(int lowerBound, int higherBound){
     int input, count = 0;
 
