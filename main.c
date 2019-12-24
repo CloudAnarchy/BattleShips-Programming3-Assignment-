@@ -128,11 +128,11 @@ void initializeGame(Game* game){
 
     // Initialize players HP and their names and ammos
     // Player 1
-    game->player1->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
+    game->player1->totalHp = 2;//N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
     game->player1->playerNum = 1;
     game->player1->ammo = N_AMMO;
     // Player 2
-    game->player2->totalHp = N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
+    game->player2->totalHp = 2;//N_S1 * S1 + N_S2 * S2 + N_S3 * S3 + N_S4 * S4; //N_S1 * S1;
     game->player2->playerNum = 2;
     game->player2->ammo = N_AMMO;
 
@@ -141,18 +141,11 @@ void initializeGame(Game* game){
     initShips(game->player2);
 }
 void sendStateToClient(ConnectInfo* connectInfo, int sock){
-    // Player 1 wins!
-    if(connectInfo->enemyPlayer->totalHp == 0){
-        send(sock, "You won!", 100, 0);
-    }
-    // Player 2 wins!
-    else if(connectInfo->player->totalHp == 0){
-        send(sock, "You lost!", 100, 0);
-    }
-    // Keep playing
-    else{
-        send(sock, "Keep Playing", 100, 0);
-    }
+    int scores[2];
+    scores[0] = connectInfo->player->totalHp;
+    scores[1] = connectInfo->enemyPlayer->totalHp;
+    send(sock, scores, 2 * sizeof(int), 0);
+
 }
 
 void playerMove(ConnectInfo* connectInfo, int sock){
@@ -166,9 +159,9 @@ void playerMove(ConnectInfo* connectInfo, int sock){
         perror("Recv failed!\n");
         exit(-5);
     }
-    if(player->playerNum == 1) printfColored(BG_PURPLE, "Player%d\n", player->playerNum);
-    else  printfColored(BG_LADI, "Player%d\n", player->playerNum);
-    printf("Made a move:\n");
+    if(player->playerNum == 1) printfColored(BG_PURPLE, "Player%d", player->playerNum);
+    else  printfColored(BG_LADI, "Player%d", player->playerNum);
+    printfColored(WHITE, "\nMade a move:\n");
     printCoords(coords);
 
     int hitSymbol = Destroyed;
@@ -183,36 +176,36 @@ void playerMove(ConnectInfo* connectInfo, int sock){
     player->ammo--;
 }
 
-void gameLoop(){
-
-    printfColored(PURPLE, "Game Started!\n");
-
-    Game* game = (Game*) malloc(sizeof(Game));
-    initializeGame(game);
-
-    int bothPlayersAmmo = N_AMMO * 2;
-    int roundsCounter = 1;
-    while(bothPlayersAmmo > 0){
-
-        // Every round the next playerMoves.
-        if(roundsCounter % 2 != 0 && game->player1->ammo > 0){
-            playerMove(game->player1, game->player2);
-        }else if (roundsCounter % 2 == 0 && game->player2->ammo > 0){
-            playerMove(game->player2, game->player1);
-        }
-
-        // Check if there is a winner
-        //if(declareWinner(game))
-        //    break;
-
-        bothPlayersAmmo--;
-        roundsCounter++;
-    }
-
-    free(game->player1);
-    free(game->player2);
-    free(game);
-}
+//void gameLoop(){
+//
+//    printfColored(PURPLE, "Game Started!\n");
+//
+//    Game* game = (Game*) malloc(sizeof(Game));
+//    initializeGame(game);
+//
+//    int bothPlayersAmmo = N_AMMO * 2;
+//    int roundsCounter = 1;
+//    while(bothPlayersAmmo > 0){
+//
+//        // Every round the next playerMoves.
+//        if(roundsCounter % 2 != 0 && game->player1->ammo > 0){
+//            playerMove(game->player1, game->player2);
+//        }else if (roundsCounter % 2 == 0 && game->player2->ammo > 0){
+//            playerMove(game->player2, game->player1);
+//        }
+//
+//        // Check if there is a winner
+//        //if(declareWinner(game))
+//        //    break;
+//
+//        bothPlayersAmmo--;
+//        roundsCounter++;
+//    }
+//
+//    free(game->player1);
+//    free(game->player2);
+//    free(game);
+//}
 void prepareMsg(char* str, Player* player){
 
     int n = strlen(str);
@@ -257,22 +250,43 @@ void* playerHandler(void* data){
     ConnectInfo* connectInfo = (ConnectInfo*) data;
     int sock = *(int*)connectInfo->clientSock;
 
-    int playerTurns = connectInfo->player->ammo;
-
-    while(playerTurns > 0
+    pthread_mutex_t mutex;
+    while(connectInfo->player->ammo > 0
     && connectInfo->player->totalHp > 0
     && connectInfo->enemyPlayer->totalHp > 0){
 
+        pthread_mutex_lock(&mutex);
         // First send is the initialized player
         send(sock, connectInfo->player, sizeof(Player), 0);
-        if(playerTurns == connectInfo->player->ammo){
+        if(connectInfo->player->ammo == N_AMMO){
             addShips(connectInfo->player, sock);
         }else{
             playerMove(connectInfo, sock);
         }
-        playerTurns--;
+
+        printfColored(ORANGE, "P%d[HP] : ", connectInfo->player->playerNum);
+        printfColored(GREEN, "%d        ", connectInfo->player->totalHp);
+        printfColored(ORANGE, "P%d[HP] : ", connectInfo->enemyPlayer->playerNum);
+        printfColored(GREEN, "%d\n", connectInfo->enemyPlayer->totalHp);
+
+        connectInfo->player->ammo--;
+        pthread_mutex_unlock(&mutex);
     }
 
+    pthread_mutex_lock(&mutex);
+    if(connectInfo->player->totalHp == 0){
+        printfColored(GREEN, "Player%d won!\n", connectInfo->enemyPlayer->playerNum);
+    }else if(connectInfo->enemyPlayer->totalHp == 0){
+        printfColored(RED, "Player%d won!\n", connectInfo->player->playerNum);
+    }else{
+        printfColored(ORANGE, "No one won!\n");
+    }
+
+    sendStateToClient(connectInfo, sock);
+
+    pthread_mutex_unlock(&mutex);
+
+    pthread_mutex_destroy(&mutex);
     close(sock);
     pthread_exit(NULL);
 }
@@ -370,6 +384,7 @@ void gameConnected(){
         exit(-4);
     }
     free(game->player1);
+    free(game->player2);
     free(game);
 }
 
