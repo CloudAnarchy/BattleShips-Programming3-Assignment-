@@ -140,30 +140,41 @@ void initializeGame(Game* game){
     initShips(game->player1);
     initShips(game->player2);
 }
-void sendStateToClient(ConnectInfo* connectInfo, int sock){
-    int scores[2];
-    scores[0] = connectInfo->player->totalHp;
-    scores[1] = connectInfo->enemyPlayer->totalHp;
-    send(sock, scores, 2 * sizeof(int), 0);
-
-}
+//int sendStateToClient(ConnectInfo* connectInfo, int sock){
+//    int scores[2];
+//    scores[0] = connectInfo->player->totalHp;
+//    scores[1] = connectInfo->enemyPlayer->totalHp;
+//    send(sock, scores, 2 * sizeof(int), 0);
+//
+//    //int ep;
+//    // If someone lost found who was it if our
+//    // player didn't lose the make him a winner
+//    if(scores[0] == 0 || scores[1] == 0){
+//        // if our player lost return -1 else announce him winner
+//        //ep = connectInfo->player->totalHp == 0 ? -1 : 1;
+//        return connectInfo->player->totalHp == 0 ? -1 : 1;
+//    }else return 0;
+//    //return ep;
+//}
 
 void playerMove(ConnectInfo* connectInfo, int sock){
     Player* player = connectInfo->player;
     Player* enemyPlayer = connectInfo->enemyPlayer;
 
-    sendStateToClient(connectInfo, sock);
     // He will send this info with tcp/ip protocol to the server
     int* coords = (int*) malloc(2 * sizeof(int));
     if(recv(sock, coords, 2 * sizeof(int), 0) < 0){
         perror("Recv failed!\n");
         exit(-5);
     }
-    if(player->playerNum == 1) printfColored(BG_PURPLE, "Player%d", player->playerNum);
-    else  printfColored(BG_LADI, "Player%d", player->playerNum);
-    printfColored(WHITE, "\nMade a move:\n");
-    printCoords(coords);
+    if(player->playerNum == 1){
+        printfColored(BG_PURPLE, "Player%d made a move:\n", player->playerNum);
+    }else{
+        printfColored(BG_LADI, "Player%d made a move:\n", player->playerNum);
+    }
 
+    printCoords(coords);
+    printfColored(WHITE, "\n");
     int hitSymbol = Destroyed;
     // If there is a Submarine in that tile update the enemy
     // board his hp and our board.
@@ -176,52 +187,7 @@ void playerMove(ConnectInfo* connectInfo, int sock){
     player->ammo--;
 }
 
-//void gameLoop(){
-//
-//    printfColored(PURPLE, "Game Started!\n");
-//
-//    Game* game = (Game*) malloc(sizeof(Game));
-//    initializeGame(game);
-//
-//    int bothPlayersAmmo = N_AMMO * 2;
-//    int roundsCounter = 1;
-//    while(bothPlayersAmmo > 0){
-//
-//        // Every round the next playerMoves.
-//        if(roundsCounter % 2 != 0 && game->player1->ammo > 0){
-//            playerMove(game->player1, game->player2);
-//        }else if (roundsCounter % 2 == 0 && game->player2->ammo > 0){
-//            playerMove(game->player2, game->player1);
-//        }
-//
-//        // Check if there is a winner
-//        //if(declareWinner(game))
-//        //    break;
-//
-//        bothPlayersAmmo--;
-//        roundsCounter++;
-//    }
-//
-//    free(game->player1);
-//    free(game->player2);
-//    free(game);
-//}
-void prepareMsg(char* str, Player* player){
 
-    int n = strlen(str);
-    for(int i = 0; i < BOARD_HEIGHT; i++) {
-        for (int j = 0; j < BOARD_WIDTH; j++) {
-            str[n++] = player->ourTiles[i][j];
-        }
-    }
-
-    for(int i = 0; i < BOARD_HEIGHT; i++) {
-        for (int j = 0; j < BOARD_WIDTH; j++) {
-            str[n++] = player->enemyTerritory[i][j];
-        }
-    }
-    str[n] = '\0';
-}
 void addShips(Player* player, int sock){
     // Auto placements
 //    for(int i = 0; i < SHIPS; i++){
@@ -240,8 +206,7 @@ void addShips(Player* player, int sock){
             player->ourTiles[tmpCoords[0]][tmpCoords[1]] = Occupied;
         }
     }
-    printfColored(BG_PURPLE, "Player%d\n", player->playerNum);
-    printfColored(CYAN, "Added all his ships!\n");
+    printfColored(CYAN, "Player%d placed all his ships!\n", player->playerNum);
 }
 
 void* playerHandler(void* data){
@@ -250,56 +215,58 @@ void* playerHandler(void* data){
     ConnectInfo* connectInfo = (ConnectInfo*) data;
     int sock = *(int*)connectInfo->clientSock;
 
-    pthread_mutex_t mutex;
-    while(connectInfo->player->ammo > 0
-    && connectInfo->player->totalHp > 0
-    && connectInfo->enemyPlayer->totalHp > 0){
+    int rounds = 0;
 
-        pthread_mutex_lock(&mutex);
+    while(connectInfo->player->ammo > 0){
+
+        if(connectInfo->player->totalHp == 0 || connectInfo->enemyPlayer->totalHp == 0){
+
+            if(connectInfo->player->totalHp != 0) connectInfo->player->totalHp = -9185;
+
+            printfColored(CYAN, "\t\t\tSCORES\n");
+            printfColored(RED, "P%d[HP] : ", connectInfo->player->playerNum);
+            printfColored(GREEN, "%d        ", connectInfo->player->totalHp);
+            printfColored(RED, "P%d[HP] : ", connectInfo->enemyPlayer->playerNum);
+            printfColored(GREEN, "%d\n\n", connectInfo->enemyPlayer->totalHp);
+            // The winning code
+
+            send(sock, connectInfo->player, sizeof(Player), 0);
+            break;
+        }
+
         // First send is the initialized player
         send(sock, connectInfo->player, sizeof(Player), 0);
-        if(connectInfo->player->ammo == N_AMMO){
+
+        if(rounds == 0){
             addShips(connectInfo->player, sock);
         }else{
             playerMove(connectInfo, sock);
         }
 
-        printfColored(ORANGE, "P%d[HP] : ", connectInfo->player->playerNum);
-        printfColored(GREEN, "%d        ", connectInfo->player->totalHp);
-        printfColored(ORANGE, "P%d[HP] : ", connectInfo->enemyPlayer->playerNum);
-        printfColored(GREEN, "%d\n", connectInfo->enemyPlayer->totalHp);
 
-        connectInfo->player->ammo--;
-        pthread_mutex_unlock(&mutex);
+        rounds++;
     }
 
-    pthread_mutex_lock(&mutex);
     if(connectInfo->player->totalHp == 0){
-        printfColored(GREEN, "Player%d won!\n", connectInfo->enemyPlayer->playerNum);
+        printfColored(BG_RED, "Player%d won!\n", connectInfo->enemyPlayer->playerNum);
     }else if(connectInfo->enemyPlayer->totalHp == 0){
-        printfColored(RED, "Player%d won!\n", connectInfo->player->playerNum);
+        printfColored(BG_GREEN, "Player%d won!\n", connectInfo->player->playerNum);
     }else{
         printfColored(ORANGE, "No one won!\n");
     }
 
-    sendStateToClient(connectInfo, sock);
-
-    pthread_mutex_unlock(&mutex);
-
-    pthread_mutex_destroy(&mutex);
     close(sock);
     pthread_exit(NULL);
 }
 
 void* serverConnection(void* game){
-    int sock, client_sock, sizeOfStruct;
+    int sock, playerSock, sizeOfStruct;
     struct sockaddr_in server , client;
 
     // Prepare the sockaddr_in structure
     server.sin_family = AF_INET;
     server.sin_port = htons(PORT);
     server.sin_addr.s_addr = htonl(INADDR_ANY);
-
 
     //Create socket
     sock = socket(AF_INET , SOCK_STREAM , 0);
@@ -324,17 +291,15 @@ void* serverConnection(void* game){
     printfColored(ORANGE, "Waiting for incoming connections...\n");
     sizeOfStruct = sizeof(struct sockaddr_in);
 
-    int count = 0;
-    while((client_sock = accept(sock, (struct sockaddr *)&client, (socklen_t*)&sizeOfStruct)) || count < 2){
+    pthread_t playerThread[2];
+    for(int i = 0; i < N_PLAYERS; i++){
+        playerSock = accept(sock, (struct sockaddr *)&client, (socklen_t*)&sizeOfStruct);
 
-        // New connection-customer
-        pthread_t playerThread;
         ConnectInfo* connectInfo = (ConnectInfo*) malloc(sizeof(ConnectInfo));
         connectInfo->clientSock  = malloc(1);
-        *connectInfo->clientSock = client_sock;
+        *connectInfo->clientSock = playerSock;
 
-
-        if(count == 0){
+        if(i == 0){
             connectInfo->player      = ((Game*) game)->player1;
             connectInfo->enemyPlayer = ((Game*) game)->player2;
         }else{
@@ -342,27 +307,21 @@ void* serverConnection(void* game){
             connectInfo->enemyPlayer = ((Game*) game)->player1;
         }
 
-
-        if(pthread_create(&playerThread , NULL, playerHandler, (void*) connectInfo) < 0){
+        printfColored(MAGENTA, "Player%d connected!\n", connectInfo->player->playerNum);
+        if(pthread_create(&playerThread[i] , NULL, playerHandler, (void*) connectInfo) < 0){
             perror("could not create thread");
             exit(-4);
         }
 
-
-        int players = 2;
-        // We don't want to join the thread if we do its going to be linear.
-        // If you made connection with the last customer wait him!!
-        if(client_sock == players + 4){
-            pthread_join(playerThread, NULL);
-        }else{
-            pthread_detach(playerThread);
+        if(playerSock < 0){
+            perror("accept failed");
+            exit(1);
         }
-        count++;
     }
 
-    if(client_sock < 0){
-        perror("accept failed");
-        exit(1);
+    for(int i = 0; i < N_PLAYERS; i++){
+        //pthread_detach(playerThread[i]);
+        pthread_join(playerThread[i], NULL);
     }
 
     return NULL;

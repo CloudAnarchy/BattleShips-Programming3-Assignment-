@@ -132,40 +132,35 @@ int waitForServer(Player* player, int sock){
         perror("Recv failed!\n");
         exit(-5);
     }
-
     int num = player->playerNum - 1;
-    int returnNum = 0;
 
     // If someone lost found who was it if our
     // player didn't lose the make him a winner
     if(scores[0] == 0 || scores[1] == 0){
         // if our player lost return -1 else announce him winner
+        printf("myHP: %d", scores[num]);
         return scores[num] == 0 ? LOSER : WINNER;
-    }else return 0;
-
-    return returnNum;
+    }else{
+        printf("myHP: %d  ", scores[num]);
+        printf("HP1: %d   ", scores[0]);
+        printf("HP2: %d\n", scores[1]);
+        printfColored(RED, "Still playing!\n");
+        return 0;
+    }
 
 }
 void youLost(int sock){
-    printfColored(RED, "YOU LOST!!\n");
+    printfColored(MAGENTA, "YOU LOST!!\n");
     close(sock);
+    exit(1);
 }
 void youWon(int sock){
     printfColored(GREEN, "YOU WON!!\n");
     close(sock);
+    exit(1);
 }
 void playerMove(Player* player, int sock){
     printBoards(player);
-
-    switch(waitForServer(player, sock)){
-        case 1:
-            youLost(sock);
-            return;
-        case -1:
-            youWon(sock);
-            return;
-        default:;
-    }
 
     printfColored(MAGENTA, "Make a move");
     printf(" Player");
@@ -204,23 +199,32 @@ int main(int argc , char *argv[]){
     }
     puts("Connected\n");
 
-    int counter = 0;
+    int rounds = 0;
 
-    Player* player;
+    Player* player = NULL;
+
     //keep communicating with server
-    while(counter < N_AMMO){
+    while(rounds < N_AMMO){
 
-        //Receive player info from the server
+        // If player is already initialized ask for the correct player
+        if(rounds > 0){
+            send(sock, (void*)(long) player->playerNum, sizeof(int), 0);
+        }
+
+        //Receive player data from the server
         if(recv(sock , server_reply , sizeof(Player) , 0) < 0){
             puts("recv failed");
             break;
         }
-
         player = (Player*) server_reply;
 
-        if(counter == 0)  initShips(player, sock);
-        else              playerMove(player, sock);
-        counter++;
+        if(rounds == 0)  initShips(player, sock);
+        else{
+            if(player->totalHp == 0)          youLost(sock);
+            else if(player->totalHp == -9185) youWon(sock);
+            else                              playerMove(player, sock);
+        }
+        rounds++;
     }
 
     close(sock);
@@ -228,16 +232,6 @@ int main(int argc , char *argv[]){
 }
 
 void printBoards(Player* player){
-
-
-    // Print player info
-    printfColored(GREEN, "\n\nPlayer ");
-    printfColored(ORANGE, "%d\n", player->playerNum);
-    printfColored(WHITE, "HP: ");
-    printfColored(GREEN, "%d\n", player->totalHp);
-    printfColored(WHITE, "Ammo: ");
-    printfColored(ORANGE, "%d\n\n", player->ammo);
-    ////////////////////////////////////////
 
     printfColored(BG_CYAN,"This is your board:\t\t\t\t\t\t\t\t\t\t\t\t\t\t ");
     printfColored(BG_RED, "Enemy Territory:");
@@ -279,5 +273,14 @@ void printBoards(Player* player){
         printf("\n");
     }
     printf("\n\n");
+
+    // Print player info
+    printfColored(GREEN, "\n\nPlayer");
+    printfColored(RED, "%d\n", player->playerNum);
+    printfColored(WHITE, "HP: ");
+    printfColored(GREEN, "%d\n", player->totalHp);
+    printfColored(WHITE, "Ammo: ");
+    printfColored(ORANGE, "%d\n\n", player->ammo);
+    ////////////////////////////////////////
 
 }

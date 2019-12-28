@@ -5,6 +5,7 @@
 #define N_S2 3
 #define N_S3 2
 #define N_S4 1
+#define N_PLAYERS 2
 #define SHIPS N_S1 //+ N_S2 + N_S3 + N_S4
 #define N_AMMO 22
 #define PORT 8888
